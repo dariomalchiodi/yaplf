@@ -15,7 +15,7 @@ AUTHORS:
 """
 
 #*****************************************************************************
-#       Copyright (C) 2010 Dario Malchiodi <malchiodi@dsi.unimi.it>
+#       Copyright (C) 2010 Dario Malchiodi <malchiodi@di.unimi.it>
 #
 # This file is part of yaplf.
 # yaplf is free software; you can redistribute it and/or modify it under the
