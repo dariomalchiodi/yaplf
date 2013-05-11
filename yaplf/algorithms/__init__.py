@@ -226,6 +226,12 @@ class IterativeAlgorithm(LearningAlgorithm, Observable):
             selector = sequential_selector
         self.sample_selector = selector(self.sample)
 
+    def get_current_iteration_value(self):
+        pass
+
+    def get_previous_iteration_value(self):
+        pass
+
 
 class IdiotAlgorithm(LearningAlgorithm):
     r"""

@@ -31,7 +31,7 @@ AUTHORS:
 #*****************************************************************************
 
 
-from yaplf.utility.error import MSE
+from yaplf.utility.error import MSE, PNorm
 
 
 class StoppingCriterion(object):
@@ -641,3 +641,84 @@ class TrainErrorStoppingCriterion(TestErrorStoppingCriterion):
 
         self.learning_algorithm = alg
         self.test_set = alg.sample
+
+
+class NormStoppingCriterion(StoppingCriterion):
+    r"""
+
+
+    AUTHORS:
+
+    - Cristiano Aitis, Dario Malchiodi (2013-05-06)
+
+    """
+
+    def __init__(self, max_error=0.01, norm=PNorm(2),
+        max_iterations=5000):
+
+
+        StoppingCriterion.__init__(self)
+        if max_error < 0:
+            raise ValueError('the specified max_error parameter should be \
+                positive.')
+        if max_iterations <= 0:
+            raise ValueError('the maximum number of iterations should be \
+                positive.')
+        self.max_error = max_error
+        self.norm = norm
+        self.max_iterations = max_iterations
+        self.current_iteration = 0
+
+    def __repr__(self):
+        result = 'NormStoppingCriterion('
+        if self.max_error != 0.1:
+            result += str(self.max_error) + ', '
+        if self.norm != PNorm(2):
+            result += str(self.norm) + ', '
+        if result[-2:] == ', ':
+            result = result[:-2]
+        result += ')'
+        return result
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __eq__(self, other):
+        return type(self) == type(other) and self.test_set == other.test_set \
+            and  self.max_error == other.max_error \
+            and self.norm == other.norm
+
+    def __ne__(self, other):
+        return not self == other
+
+    def __hash__(self):
+        return hash(("TestErrorStoppingCriterion", hash(self.test_set),
+            hash(self.max_error), hash(self.norm)))
+
+    def __nonzero__(self):
+        return True
+
+    def reset(self):
+        r"""
+        Reset the stopping criterion.
+
+
+
+        """
+
+        self.current_iteration = 0
+
+    def stop(self):
+        r"""
+        Returns a flag indicating whether learning should be stopped.
+
+ 
+
+        """
+
+        self.current_iteration += 1
+        alg = self.learning_algorithm
+
+        return (self.norm.compute(alg.get_current_iteration_value(), alg.get_previous_iteration_value())
+            < self.max_error and self.current_iteration <= self.max_iterations
+            if alg is not None else True)

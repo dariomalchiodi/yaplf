@@ -320,3 +320,29 @@ class MaxError(ErrorModel):
         if verbose:
             print 'Maximum error: ' + str(max_error)
         return max_error
+
+
+class Norm(object):
+    def compute(self, x1, x2):
+        pass
+
+
+class PNorm(Norm):
+    def __init__(self, degree):
+        Norm.__init__(self)
+        if degree <= 0 or int(degree) != degree:
+            raise ValueError('the specified degree parameter is not \
+                a positive integer')
+        self.degree = degree
+
+    def compute(self, x1, x2):
+        return sum([(x[0]- x[1]) ** self.degree for x in array((array(x1).flatten(), array(x2).flatten())).T ]) ** (1.0/self.degree)
+
+
+class InfinityNorm(Norm):
+    def __init__(self):
+        Norm.__init__(self)
+
+    def compute(self, x1, x2):
+        return max([(x[0]- x[1]) ** self.degree for x in array((array(x1).flatten(), array(x2).flatten())).T ]) ** (1.0/self.degree)
+
