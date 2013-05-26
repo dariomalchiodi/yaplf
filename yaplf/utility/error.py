@@ -335,8 +335,26 @@ class PNorm(Norm):
                 a positive integer')
         self.degree = degree
 
+    def __repr__(self):
+        return 'PNorm(' + str(self.degree) + ')'
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __eq__(self, other):
+        return type(self) == type(other) and self.degree == other.degree
+
+    def __ne__(self, other):
+        return not self == other
+
+    def __hash__(self):
+        return hash(("PNorm", hash(self.degree))
+
+    def __nonzero__(self):
+        return True
+
     def compute(self, x1, x2):
-        return sum([(x[0]- x[1]) ** self.degree for x in array((array(x1).flatten(), array(x2).flatten())).T ]) ** (1.0/self.degree)
+        return sum([abs(x[0]- x[1]) ** self.degree for x in array((array(x1).flatten(), array(x2).flatten())).T ]) ** (1.0/self.degree)
 
 
 class InfinityNorm(Norm):
@@ -344,5 +362,5 @@ class InfinityNorm(Norm):
         Norm.__init__(self)
 
     def compute(self, x1, x2):
-        return max([(x[0]- x[1]) ** self.degree for x in array((array(x1).flatten(), array(x2).flatten())).T ]) ** (1.0/self.degree)
+        return max([abs(x[0]- x[1]) for x in array((array(x1).flatten(), array(x2).flatten())).T ])
 

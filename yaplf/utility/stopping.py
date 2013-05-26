@@ -503,7 +503,7 @@ class TestErrorStoppingCriterion(StoppingCriterion):
         self.current_iteration += 1
         alg = self.learning_algorithm
         return (alg.model.test(self.test_set, self.error_model)
-            < self.max_error and self.current_iteration <= self.max_iterations
+            < self.max_error or self.current_iteration > self.max_iterations
             if alg is not None else True)
 
 
@@ -675,6 +675,8 @@ class NormStoppingCriterion(StoppingCriterion):
             result += str(self.max_error) + ', '
         if self.norm != PNorm(2):
             result += str(self.norm) + ', '
+        if self.max_iterations != 5000:
+            result += str(self.max_iterations) + ', '
         if result[-2:] == ', ':
             result = result[:-2]
         result += ')'
@@ -684,7 +686,7 @@ class NormStoppingCriterion(StoppingCriterion):
         return self.__repr__()
 
     def __eq__(self, other):
-        return type(self) == type(other) and self.test_set == other.test_set \
+        return type(self) == type(other) and self.max_iterations == other.max_iterations \
             and  self.max_error == other.max_error \
             and self.norm == other.norm
 
@@ -692,7 +694,7 @@ class NormStoppingCriterion(StoppingCriterion):
         return not self == other
 
     def __hash__(self):
-        return hash(("TestErrorStoppingCriterion", hash(self.test_set),
+        return hash(("NormStoppingCriterion", hash(self.max_iterations),
             hash(self.max_error), hash(self.norm)))
 
     def __nonzero__(self):
@@ -708,6 +710,14 @@ class NormStoppingCriterion(StoppingCriterion):
 
         self.current_iteration = 0
 
+    def register_learning_algorithm(self, alg):
+        r"""
+        
+
+        """
+
+        self.learning_algorithm = alg
+
     def stop(self):
         r"""
         Returns a flag indicating whether learning should be stopped.
@@ -720,5 +730,5 @@ class NormStoppingCriterion(StoppingCriterion):
         alg = self.learning_algorithm
 
         return (self.norm.compute(alg.get_current_iteration_value(), alg.get_previous_iteration_value())
-            < self.max_error and self.current_iteration <= self.max_iterations
+            < self.max_error or self.current_iteration > self.max_iterations
             if alg is not None else True)
