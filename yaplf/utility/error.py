@@ -348,7 +348,7 @@ class PNorm(Norm):
         return not self == other
 
     def __hash__(self):
-        return hash(("PNorm", hash(self.degree))
+        return hash(("PNorm", hash(self.degree)))
 
     def __nonzero__(self):
         return True
