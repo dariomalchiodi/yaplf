@@ -64,7 +64,7 @@ class FuzzyCMeansClusterer(Clusterer):
     #ricordiamoci di scrivere che lancia ValueError
 
         try:
-            method= kwargs['method']
+            method = kwargs['method']
         except KeyError:
             method = 'fuzzy'
 
@@ -80,16 +80,22 @@ class FuzzyCMeansClusterer(Clusterer):
 
 
 class FuzzyCMeansAlgorithm(IterativeAlgorithm):
-    def __init__(self, sample, n_clusters = 2, m = 2, **kwargs ):
+    def __init__(self, sample, n_clusters = 2, m = 2,  **kwargs ):
+        
         IterativeAlgorithm.__init__(self, sample)
+
+        try:
+            self.initializer = kwargs['initializer']
+        except KeyError:
+            self.initializer = False
         
         self.n_clusters = n_clusters
         self.m = m
         self.distance = 1.0
-        self.reset(**kwargs)
+        #self.reset(**kwargs)
 
         self.memberships_old = None
-        self.reset()
+        self.reset(**kwargs)
 
     def matrix_copy(self , matrix):
         copy = []
@@ -127,13 +133,31 @@ class FuzzyCMeansAlgorithm(IterativeAlgorithm):
         self.notify_observers()
 
 
-    def reset(self):
+    def reset(self, **kwargs):
         IterativeAlgorithm.reset(self)
-        memberships = [self.normalize([random() for j in range(self.n_clusters)]) for i in range(len(self.sample))]
-        self.model = FuzzyCMeansClusterer(self.sample, memberships)
+        # memberships = [self.normalize([random() for j in range(self.n_clusters)]) for i in range(len(self.sample))]
+        # self.model = FuzzyCMeansClusterer(self.sample, memberships) 
 
+        if self.initializer:
+            self.n_clusters = len(self.initializer)
+            centroids = self.initializer
+            data = array([elem.pattern for elem in self.sample])
+            memberships = [self.normalize([random() for j in range(self.n_clusters)]) for i in range(len(self.sample))]
+            for j in range(len(centroids)):
+                for i in range(len(data)):
+                    den = sum([(linalg.norm(data[i] - centroids[j])/
+                        linalg.norm(data[i]-centroids[k]))**(2/(self.m-1)) 
+                        for k in range(self.n_clusters)])
+                    memberships[i][j] = 1/den
+        else:
+            memberships = [self.normalize([random() for j in range(self.n_clusters)]) for i in range(len(self.sample))]
+        
+        self.model = FuzzyCMeansClusterer(self.sample, memberships) 
+            
+            
         # 10 means simply a big value, so that we don't run the risk of erronously stop
         # if we check convergence before first iteration
+        
         self.memberships_old = [[10 for j in range(self.n_clusters)] for i in range(len(self.sample))]
 
 
