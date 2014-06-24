@@ -46,7 +46,7 @@ from numpy import mean
 from yaplf.algorithms import LearningAlgorithm
 from yaplf.models.kernel import LinearKernel
 from yaplf.models.svm import SVMClassifier, check_svm_classification_sample
-from yaplf.algorithms.svm.solvers import PyMLClassificationSolver
+from yaplf.algorithms.svm.classification.solvers import PyMLClassificationSolver
 
 
 class SVMClassificationAlgorithm(LearningAlgorithm):
