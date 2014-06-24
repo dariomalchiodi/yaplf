@@ -38,6 +38,7 @@ AUTHORS:
 # from numpy import mean
 
 from yaplf.algorithms.svm.classification import SVMClassificationAlgorithm
+from yaplf.algorithms.svm.classification.uncertain.solvers import GurobiUncertainClassificationSolver
 # from yaplf.models.kernel import LinearKernel
 # from yaplf.models.svm import SVMClassifier, check_svm_classification_sample
 # from yaplf.algorithms.svm.solvers import PyMLClassificationSolver
@@ -188,27 +189,89 @@ class SVMUncertainClassificationAlgorithm(SVMClassificationAlgorithm):
 
         """
 
-        SVMClassificationAlgorithm.__init__(self, sample)
-        check_svm_classification_sample(sample)
-        self.labeled_sample = labeled_sample
+        SVMClassificationAlgorithm.__init__(self, labeled_sample, **kwargs)
+
         self.unlabeled_sample = unlabeled_sample
-        self.model = None
-
-        try:
-            self.c_value = kwargs['c_value']
-        except KeyError:
-            self.c_value = None
-
-        try:
-            self.kernel = kwargs['kernel']
-        except KeyError:
-            self.kernel = LinearKernel()
 
         try:
             self.solver = kwargs['solver']
         except KeyError:
-            #self.solver = CVXOPTClassificationSolver(*args, **kwargs)
             self.solver = SVMUncertainClassificationAlgorithm.default_solver
+
+    def get_classifier(self, optimal_values, **kwargs):
+        alphas, gammas, deltas = optimal_values
+        patterns = [e.pattern for e in self.sample]
+        labels = [e.label for e in self.sample]
+
+        unlabeled_patterns = self.unlabeled_sample
+
+        if not(len(patterns) == len(labels) == len(alphas)):
+            raise ValueError('patterns, labels and optimal alphas have different length')
+
+        bs = numpy.array([labels[i] -
+                          sum([alphas[j]*labels[j]*self.kernel.compute(patterns[j],
+                                                                       patterns[i])
+                               for j in range(len(alphas))]) -
+                          sum([(gammas[s]-deltas[s])*self.kernel.compute(
+                                                                unlabeled_patterns[s],
+                                                                patterns[i])
+                               for s in range(len(gammas))])
+                          for i in range(len(alphas)) if 0 < alphas[i] < c])
+
+        try:
+            b_var_threshold = kwargs['b_var_threshold']
+        except KeyError:
+            b_var_threshold = 1e-4
+
+        b_mean = bs.mean()
+        b_var = bs.var()
+
+        if b_var > b_var_threshold:
+            print 'Variance on b values [%s] is %f and exceeds threshold %f' % (', '.join(map(str, bs)), b_var, b_var_threshold)
+
+        def real_classifier(classifier, alphas, gammas, deltas, patterns, labels, unlabeled_patterns):
+            return classifier
+
+        def binary_classifier(classifier, alphas, gammas, deltas, patterns, labels, unlabeled_patterns):
+            return lambda input: 1 if classifier(input) >= 0 else -1
+
+        def lagrange_values(classifier, alphas, gammas, deltas, patterns, labels, unlabeled_patterns):
+            return (alphas, gammas, deltas)
+
+        def epsilon_value(classifier, alphas, gammas, deltas, patterns, labels, unlabeled_patterns):
+            alpha_y = [a*y for a, y in zip(alphas, labels)]
+
+            first = numpy.array([-1 * numpy.dot([a*y for a, y in zip(alphas, labels)], map(lambda x: k.compute(x, unlabeled_patterns[s]), patterns)) for s in range(len(gammas)) if gammas[s] > 0])
+            second = numpy.array([-1 * numpy.dot(numpy.array(gammas) - numpy.array(deltas), map(lambda x: k.compute(x, unlabeled_patterns[s]), unlabeled_patterns)) for s in range(len(gammas)) if gammas[s] > 0])
+            eps_gammas = numpy.array([e - b_mean for e in first-second])
+
+            first = numpy.array([numpy.dot([a*y for a, y in zip(alphas, labels)], map(lambda x: k.compute(x, unlabeled_patterns[s]), patterns)) for s in range(len(deltas)) if deltas[s] > 0])
+            second = numpy.array([numpy.dot(numpy.array(gammas) - numpy.array(deltas), map(lambda x: k.compute(x, unlabeled_patterns[s]), unlabeled_patterns)) for s in range(len(deltas)) if deltas[s] > 0])
+            eps_deltas = numpy.array([e + b_mean for e in first+second])
+
+            return numpy.concatenate((eps_gammas, eps_deltas)).mean()
+
+        decorator = {'real_classifier': real_classifier, \
+                     'binary_classifier': binary_classifier, \
+                     'lagrange_values': lagrange_values, 'epsilon_value': epsilon_value}
+
+        try:
+            output = kwargs['output']
+        except KeyError:
+            output = 'real_classifier'
+
+        classifier = lambda input: numpy.dot([alphas[i]*labels[i] for i in range(len(patterns))],[k.compute(p, input) for p in patterns]) + \
+            numpy.dot(numpy.array(gammas) - numpy.array(deltas), [k.compute(u, input) for u in unlabeled_patterns]) + \
+            b_mean
+
+        output = decorator[output]
+
+        if callable(output):
+            return output(classifier, alphas, gammas, deltas, patterns, labels, unlabeled_patterns)
+        else:
+            return map(lambda o: o(classifier, alphas, gammas, deltas, patterns, labels, unlabeled_patterns), output)
+
+
 
     def run(self):
         r"""
@@ -274,30 +337,19 @@ class SVMUncertainClassificationAlgorithm(SVMClassificationAlgorithm):
 
         """
 
-        alpha = self.solver.solve(self.sample, self.unlabeled_sample, \
-            self.c_value, self.kernel)
-        num_examples = len(self.sample)
+        
 
-        if self.c_value == None:
-            threshold = mean([self.sample[i].label -
-                sum([alpha[j] * self.sample[j].label *
-                self.kernel.compute(self.sample[j].pattern,
-                self.sample[i].pattern)
-                for j in range(num_examples)]) for i in range(num_examples)
-                if alpha[i] > 0])
-        else:
-            threshold = mean([self.sample[i].label -
-                sum([alpha[j] * self.sample[j].label *
-                self.kernel.compute(self.sample[j].pattern,
-                self.sample[i].pattern) for j in range(num_examples)])
-                for i in range(num_examples)
-                if alpha[i] > 0 and alpha[i] < self.c_value])
 
-        self.model = SVMClassifier(alpha, threshold, self.sample,
-            kernel=self.kernel)
 
+    def run(self, **kwargs):
+
+
+        optimal_values = self.solver.solve(self.sample, self.unlabeled_sample, self.c, self.kernel, **kwargs)
+        self.model = self.get_classifier(optimal_values, **kwargs)
 
 
 
 # Default solvers
-SVMClassificationAlgorithm.default_solver = PyMLClassificationSolver()
+SVMUncertainClassificationAlgorithm.default_solver = GurobiUncertainClassificationSolver()
+
+

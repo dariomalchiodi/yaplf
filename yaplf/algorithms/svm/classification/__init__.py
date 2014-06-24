@@ -46,7 +46,7 @@ from numpy import mean
 from yaplf.algorithms import LearningAlgorithm
 from yaplf.models.kernel import LinearKernel
 from yaplf.models.svm import SVMClassifier, check_svm_classification_sample
-from yaplf.algorithms.svm.solvers import PyMLClassificationSolver
+from yaplf.algorithms.svm.classification.solvers import GurobiClassificationSolver
 
 
 class SVMClassificationAlgorithm(LearningAlgorithm):
@@ -58,7 +58,7 @@ class SVMClassificationAlgorithm(LearningAlgorithm):
     - ``sample`` -- list or tuple of ``LabeledExample`` instances whose
       labels are all set either to `1` or `-1`.
 
-    - ``c_value`` -- float (default: None, amounting to the hard-margin version
+    - ``c`` -- float (default: None, amounting to the hard-margin version
       of the algorithm) value for the trade-off constant `C` between steepness
       and accuracy in the soft-margin version of the algorithm.
 
@@ -95,7 +95,6 @@ class SVMClassificationAlgorithm(LearningAlgorithm):
 
         >>> from yaplf.algorithms.svm.classification \
         ... import SVMClassificationAlgorithm
-        ...
         >>> from yaplf.models.kernel import PolynomialKernel
         >>> alg = SVMClassificationAlgorithm(xor_sample,
         ... kernel = PolynomialKernel(2))
@@ -107,8 +106,8 @@ class SVMClassificationAlgorithm(LearningAlgorithm):
 
         >>> alg.run()
         >>> alg.model
-        SVMClassifier([1.9999999995368085, 3.3333333325135617,
-        2.6666666660251854, 2.6666666660251854], -0.999999999697,
+        SVMClassifier([2.000000000043493, 3.3333333334006983,
+        2.6666666667220955, 2.6666666667220955], -1.00000000001,
         [LabeledExample((1, 1), -1.0), LabeledExample((0, 0), -1.0),
         LabeledExample((0, 1), 1.0), LabeledExample((1, 0), 1.0)], kernel =
         PolynomialKernel(2))
@@ -145,15 +144,15 @@ class SVMClassificationAlgorithm(LearningAlgorithm):
 
     ::
 
-        >>> from yaplf.algorithms.svm.solvers \
+        >>> from yaplf.algorithms.svm.classification.solvers \
         ... import PyMLClassificationSolver
         >>> alg = SVMClassificationAlgorithm(xor_sample,
         ... kernel = PolynomialKernel(2), solver = PyMLClassificationSolver())
-        >>> alg.run()
-        ...
-        >>> alg.model
-        SVMClassifier([1.9956464353279999, 3.3260773922133327,
-        2.6594107255466666, 2.6623131019946662], -0.997823217664,
+        >>> alg.run() # doctest:+ELLIPSIS
+        Cpos, Cneg...
+        >>> print alg.model
+        SVMClassifier([2.000000000030325, 3.3333333333791955,
+        2.6666666667061474, 2.666666666703373], -1.00000000001,
         [LabeledExample((1, 1), -1.0), LabeledExample((0, 0), -1.0),
         LabeledExample((0, 1), 1.0), LabeledExample((1, 0), 1.0)], kernel =
         PolynomialKernel(2))
@@ -169,11 +168,11 @@ class SVMClassificationAlgorithm(LearningAlgorithm):
         ... PyMLClassificationSolver()
         >>> alg = SVMClassificationAlgorithm(xor_sample,
         ... kernel = PolynomialKernel(2))
-        >>> alg.run()
-        ...
-        >>> alg.model
-        SVMClassifier([1.9956464353279999, 3.3260773922133327,
-        2.6594107255466666, 2.6623131019946662], -0.997823217664,
+        >>> alg.run() # doctest: +ELLIPSIS
+        Cpos, Cneg...
+        >>> print alg.model
+        SVMClassifier([2.0000000000434928, 3.333333333400698,
+        2.6666666667220946, 2.6666666667220946], -1.00000000001,
         [LabeledExample((1, 1), -1.0), LabeledExample((0, 0), -1.0),
         LabeledExample((0, 1), 1.0), LabeledExample((1, 0), 1.0)], kernel =
         PolynomialKernel(2))
@@ -198,9 +197,9 @@ class SVMClassificationAlgorithm(LearningAlgorithm):
         self.model = None
 
         try:
-            self.c_value = kwargs['c_value']
+            self.c = kwargs['c']
         except KeyError:
-            self.c_value = None
+            self.c = float('inf')
 
         try:
             self.kernel = kwargs['kernel']
@@ -249,10 +248,11 @@ class SVMClassificationAlgorithm(LearningAlgorithm):
 
         ::
 
-            >>> alg.run()
+            >>> alg.run() # doctest: +ELLIPSIS
+            Cpos, Cneg...
             >>> alg.model
-            SVMClassifier([1.9999999995368085, 3.3333333325135617,
-            2.6666666660251854, 2.6666666660251854], -0.999999999697,
+            SVMClassifier([2.0000000000434928, 3.333333333400698,
+            2.6666666667220946, 2.6666666667220946], -1.00000000001,
             [LabeledExample((1, 1), -1.0), LabeledExample((0, 0), -1.0),
             LabeledExample((0, 1), 1.0), LabeledExample((1, 0), 1.0)], kernel =
             PolynomialKernel(2))
@@ -277,10 +277,11 @@ class SVMClassificationAlgorithm(LearningAlgorithm):
 
         """
 
-        alpha = self.solver.solve(self.sample, self.c_value, self.kernel)
+        alpha = self.solver.solve(self.sample, self.c, self.kernel)
+
         num_examples = len(self.sample)
 
-        if self.c_value == None:
+        if self.c == float('inf'):
             threshold = mean([self.sample[i].label -
                 sum([alpha[j] * self.sample[j].label *
                 self.kernel.compute(self.sample[j].pattern,
@@ -293,7 +294,7 @@ class SVMClassificationAlgorithm(LearningAlgorithm):
                 self.kernel.compute(self.sample[j].pattern,
                 self.sample[i].pattern) for j in range(num_examples)])
                 for i in range(num_examples)
-                if alpha[i] > 0 and alpha[i] < self.c_value])
+                if alpha[i] > 0 and alpha[i] < self.c])
 
         self.model = SVMClassifier(alpha, threshold, self.sample,
             kernel=self.kernel)
@@ -302,4 +303,4 @@ class SVMClassificationAlgorithm(LearningAlgorithm):
 
 
 # Default solvers
-SVMClassificationAlgorithm.default_solver = PyMLClassificationSolver()
+SVMClassificationAlgorithm.default_solver = GurobiClassificationSolver()
