@@ -33,7 +33,7 @@ AUTHORS:
 from matplotlib.cm import Greys
 
 from yaplf.models import Classifier
-from yaplf.graph import Plot
+from yaplf.graph import Plot, PlotterFactory
 
 
 class SVMClassifierDecisionFunctionPlot(Plot):
@@ -46,7 +46,7 @@ class SVMClassifierDecisionFunctionPlot(Plot):
 
        self.classifier = classifier
 
-    def plot(self, *args, **kwargs):
+    def plot(self, ranges, **kwargs):
         r"""
         Returns the plot SV classifier decision function. Depending on the
         environment within which the function is called, the plot is returned
@@ -352,4 +352,13 @@ class SVMClassifierDecisionFunctionPlot(Plot):
         kwargs['gradient'] = shading
         kwargs['gradient_color'] = shading_color
 
-        return Classifier.plot(self.classifier, *args, **kwargs)    
+
+        try:
+            plotter = kwargs['plotter']
+            del kwargs['plotter']
+        except KeyError:
+            plotter = PlotterFactory.get_plotter()
+
+        return plotter.decision_function_plot(ranges, lambda x,y: self.classifier.decision_function((x, y)), **kwargs)
+
+   

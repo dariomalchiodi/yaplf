@@ -32,10 +32,14 @@ AUTHORS:
 #
 #*****************************************************************************
 
+from yaplf.algorithms.svm.classification import SVMClassificationAlgorithm
+from yaplf.algorithms.svm.classification.VQ.solvers import GurobiVQClassificationSolver
 
-from yaplf.algorithms.svm.vq.solvers import CVXOPTVQClassificationSolver
+from yaplf.models.svm import SVMClassifier
 
-class SVMVQClassificationAlgorithm(LearningAlgorithm):
+import numpy
+
+class SVMVQClassificationAlgorithm(SVMClassificationAlgorithm):
     r"""
     SVM Classification Algorithm for data of variable quality, as described in
     [Apolloni et al., 2007].
@@ -45,16 +49,22 @@ class SVMVQClassificationAlgorithm(LearningAlgorithm):
     - ``sample`` -- list or tuple of ``LabeledExample`` instances whose
       labels are all set either to `1` or `-1`.
 
-    - ``c_value`` -- float (default: None, amounting to the hard-margin version
+    - ``c`` -- float (default: None, amounting to the hard-margin version
       of the algorithm) value for the trade-off constant `C` between steepness
       and accuracy in the soft-margin version of the algorithm.
 
     - ``kernel`` -- ``Kernel`` (default: ``LinearKernel()``) instance defining
       the kernel to be used.
 
+    - ``solver`` -- ``SVMVQClassificationSolver`` (default:
+      ``GurobiVQClassificationSolver()``, unless differently specified through
+      the ``SVMVQClassificationAlgorithm.default_solver`` class field) solver to
+      be used in order to find the solution of the SV classification
+      optimization problem.
+
     OUTPUT:
 
-    ``LearningAlgorithm`` instance.
+    ``SVMVQClassificationAlgorithm`` instance.
 
     EXAMPLES:
 
@@ -111,7 +121,7 @@ class SVMVQClassificationAlgorithm(LearningAlgorithm):
 
     AUTHORS:
 
-    - Dario Malchiodi (2010-04-12)
+    - Dario Malchiodi (2014-03-03)
 
     """
 
@@ -121,23 +131,19 @@ class SVMVQClassificationAlgorithm(LearningAlgorithm):
 
         """
 
-        red_sample = [a.example for a in sample]
-        LearningAlgorithm.__init__(self, red_sample)
-        check_svm_classification_sample(red_sample)
+        standard_sample = [a.example for a in sample]
+
+        SVMClassificationAlgorithm.__init__(self, standard_sample, **kwargs)
+
         self.sample = sample
         self.model = None
 
         try:
-            self.c_value = kwargs['c_value']
+            self.solver = kwargs['solver']
         except KeyError:
-            self.c_value = None
+            self.solver = SVMVQClassificationAlgorithm.default_solver
 
-        try:
-            self.kernel = kwargs['kernel']
-        except KeyError:
-            self.kernel = LinearKernel()
 
-        self.solver = CVXOPTVQClassificationSolver()
 
     def run(self):
         r"""
@@ -201,24 +207,36 @@ class SVMVQClassificationAlgorithm(LearningAlgorithm):
 
         """
 
-        alpha = self.solver.solve(self.sample, self.c_value, self.kernel)
+        alpha = self.solver.solve(self.sample, self.c, self.kernel)
+        
         num_examples = len(self.sample)
+        
+        accuracy = numpy.array([e.accuracy for e in self.sample])
+        label = numpy.array([e.example.label for e in self.sample])
+        pattern = numpy.array([e.example.pattern for e in self.sample])
+        
+        double_sum = sum([alpha[i] * alpha[j] * label[i] * label[j] *
+            self.kernel.compute(pattern[i], pattern[j])
+            for i in range(num_examples) for j in range(num_examples)])
 
-        if self.c_value == None:
-            threshold = mean([self.sample[i].example.label -
-                sum([alpha[j] * self.sample[j].example.label *
-                self.kernel.compute(self.sample[j].example.pattern,
-                self.sample[i].example.pattern)
-                for j in range(num_examples)]) for i in range(num_examples)
-                if alpha[i] > 0])
+        if self.c is None:
+            indices = [i for i in range(num_examples) if alpha[i] > 0]
         else:
-            threshold = mean([self.sample[i].example.label -
-                sum([alpha[j] * self.sample[j].example.label *
-                self.kernel.compute(self.sample[j].example.pattern,
-                self.sample[i].example.pattern) for j in range(num_examples)])
-                for i in range(num_examples)
-                if alpha[i] > 0 and alpha[i] < self.c_value])
+            indices = [i for i in range(num_examples)
+                if alpha[i] > 0 and alpha[i] < self.c]
 
-        self.model = SVMClassifier(alpha, threshold, [elem.example \
+        denominator = 1 + numpy.dot(alpha, accuracy)
+
+        threshold = numpy.mean([
+            label[j] -
+            sum([alpha[j] * label[j] * self.kernel.compute(pattern[i], pattern[j])
+                for i in range(num_examples)])/denominator +
+            label[j]*accuracy[j]*double_sum/(2*denominator**2)
+        for j in indices])
+
+        self.model = SVMClassifier(alpha/denominator, threshold, [elem.example \
             for elem in self.sample], kernel=self.kernel)
 
+
+# Default solvers
+SVMVQClassificationAlgorithm.default_solver = GurobiVQClassificationSolver()

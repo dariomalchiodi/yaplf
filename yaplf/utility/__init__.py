@@ -198,7 +198,7 @@ def is_iterable(candidate):
         return False
 
 
-def chop(data, **kwargs):
+def chop(data, left=0, right=float('inf'), tolerance=10e-6):
     r"""
     Given a number and an interval, convert the latter into one interval's
     extremes if they are close enough.
@@ -251,31 +251,16 @@ def chop(data, **kwargs):
 
     """
 
-    try:
-        left = kwargs['left']
-    except KeyError:
-        left = 0.0
-
-    try:
-        right = kwargs['right']
-    except KeyError:
-        right = None
-
-    if right is not None and left > right:
+    if left > right:
         raise ValueError('left extreme in chop should be lower or equal to \
         right extreme.')
-    if data < left or (right is not None and data > right):
+    if data < left or data > right:
         raise ValueError('data to be chopped should belong to the specified \
         interval')
 
-    try:
-        tolerance = kwargs['tolerance']
-    except KeyError:
-        tolerance = 10 ** -6
-
     if data - left < tolerance:
         return left
-    elif right is not None and right - data < tolerance:
+    elif right - data < tolerance:
         return right
     else:
         return data

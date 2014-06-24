@@ -282,6 +282,7 @@ class SVMClassifier(Classifier):
 not have the same size')
 
         self.sv_indices = [i for i in range(len(alpha)) if alpha[i] != 0]
+        
         self.support_vectors = [sample[i].pattern for i in self.sv_indices]
         self.signed_alphas = [alpha[i] * sample[i].label
             for i in self.sv_indices]

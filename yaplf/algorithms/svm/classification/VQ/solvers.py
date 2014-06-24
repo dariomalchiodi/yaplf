@@ -44,7 +44,225 @@ AUTHORS:
 #
 #*****************************************************************************
 
+from yaplf.algorithms.svm.classification.solvers import SVMClassificationSolver
 
+from yaplf.models.kernel import LinearKernel
+from yaplf.utility import chop, kronecker_delta
+
+try:
+    import gurobipy
+except ImportError:
+    print("gurobipy package not available")
+
+try:
+    from cvxopt import solvers
+    from cvxopt.base import matrix as cvxopt_matrix
+except ImportError:
+    print "Warning: no cvxopt package"
+
+class GurobiVQClassificationSolver(SVMClassificationSolver):
+    r"""
+    SVM Classification solver based on gurobi. This solver is specialized in
+    finding the approximate solution of the optimization problem described in
+    [XXXX], both in its original and soft-margin
+    formulation.
+
+    INPUT:
+
+    - ``self`` -- object on which the function is invoked.
+
+    - ``verbose`` -- boolean (default: ``False``) flag triggering verbose mode.
+
+    OUTPUT:
+
+    ``GurobiVQClassificationSolver`` object.
+
+    EXAMPLES:
+
+    Consider the following representation of the AND binary function, and a
+    default instantiation for ``GurobiClassificationSolver``:
+
+    ::
+
+        >>> from yaplf.data import LabeledExample
+        >>> from yaplf.data import AccuracyExample
+        >>> and_sample = [LabeledExample((1, 1), 1),
+        ... LabeledExample((0, 0), -1), LabeledExample((0, 1), -1),
+        ... LabeledExample((1, 0), -1)]
+        >>> accuracies = (0.5, 1, 1, 1)
+        >>> accuracy_sample = [AccuracyExample(e, a) for e, a
+        ... in zip(and_sample, accuracies)]
+        >>> from yaplf.algorithms.svm.classification.VQ.solvers import \
+        ... GurobiVQClassificationSolver
+        >>> s = GurobiVQClassificationSolver()
+
+    Once the solver instance is available, it is possible to invoke its
+    ``solve``function, specifying a labeled sample such as ``and_sample``, a
+    positive value for the constant `c` and a kernel instance in order
+    to get the solution of the corresponding SV classification optimization
+    problem:
+
+    ::
+
+        >>> from yaplf.models.kernel import LinearKernel
+        >>> s.solve(accuracy_sample, 2, LinearKernel())
+        [2, 0, 0.999999999992222, 0.999999999992222]
+
+    The value for `c` can be set to ``float('inf')``, in order to build and
+    solve the original optimization problem rather than the soft-margin
+    formulation:
+
+    ::
+
+        >>> s.solve(and_sample, float('inf'), LinearKernel())
+        [4.00000000000204, 0, 1.999999999976717, 1.99999999997672]
+
+    Note however that this class should never be used directly. It is
+    automatically used by ``SVMClassificationAlgorithm``.
+
+    REFERENCES:
+
+    [Cortes and Vapnik, 1995] Corinna Cortes and Vladimir Vapnik,
+    Support-Vector Networks, Machine Learning 20 (1995), 273--297.
+
+    AUTHORS:
+
+    - Dario Malchiodi (2014-01-20)
+
+    """
+
+    def __init__(self, verbose=False):
+        r"""
+        See ``GurobiVQClassificationSolver`` for full documentation.
+
+        """
+
+        try:
+            gurobipy.os
+        except NameError:
+            raise NotImplementedError("gurobipy package not available")
+
+        SVMClassificationSolver.__init__(self)
+        self.verbose = verbose
+
+    def solve(self, sample, c=float('inf'), kernel=LinearKernel(),
+              tolerance=1e-6):
+        r"""
+        Solve the SVM classification optimization problem corresponding
+        to the supplied sample, according to specified value for the tradeoff
+        constant `C`.
+
+        INPUT:
+
+        - ``sample`` -- list or tuple of ``LabeledExample`` instances whose
+          labels are all set either to `1` or `-1`.
+
+        - ``c`` -- float value for the tradeoff constant `C`.
+          ``float('inf')`` selects the soft-margin version of the algorithm)
+
+        - ``kernel`` -- ``Kernel`` instance defining the kernel to be used.
+
+        - ``tolerance`` -- tolerance to be used when clipping values to the
+          extremes of an interval.
+
+        OUTPUT:
+
+        list of float values -- optimal values for the optimization problem.
+
+        EXAMPLES:
+
+        Consider the following representation of the AND binary function, and a
+        default instantiation for ``GurobiClassificationSolver``:
+
+        ::
+
+            >>> from yaplf.data import LabeledExample
+            >>> and_sample = [LabeledExample((1, 1), 1),
+            ... LabeledExample((0, 0), -1), LabeledExample((0, 1), -1),
+            ... LabeledExample((1, 0), -1)]
+            >>> from yaplf.algorithms.svm.classification.solvers \
+            ... import GurobiClassificationSolver
+            >>> s = GurobiClassificationSolver()
+
+        Once the solver instance is available, it is possible to invoke its
+        ``solve`` function, specifying a labeled sample such as ``and_sample``,
+        a positive value for the constant `C` and a kernel instance in order to
+        get the solution of the corresponding SV classification optimization
+        problem:
+
+        ::
+
+            >>> from yaplf.models.kernel import LinearKernel
+            >>> s.solve(and_sample, 2, LinearKernel())
+            [2, 0, 0.999999999992222, 0.999999999992222]
+
+        The value for `C` can be set to ``float('inf')`` (which is also its
+        default value), in order to build and solve the original optimization
+        problem rather than the soft-margin formulation:
+
+        ::
+
+            >>> s.solve(and_sample, float('inf'), LinearKernel())
+            [4.00000000000204, 0, 1.999999999976717, 1.99999999997672]
+
+        Note however that this class should never be used directly. It is
+        automatically used by ``SVMClassificationAlgorithm``.
+
+        AUTHORS:
+
+        - Dario Malchiodi (2014-03-03)
+
+        """
+
+        m = len(sample)
+        patterns = [e.example.pattern for e in sample]
+        labels = [e.example.label for e in sample]
+        accuracy = [e.accuracy for e in sample]
+
+        model = gurobipy.Model('classify')
+
+        for i in range(m):
+            if c == float('inf'):
+                model.addVar(name='alpha_%d' % i, lb=0,
+                             vtype=gurobipy.GRB.CONTINUOUS)
+            else:
+                model.addVar(name='alpha_%d' % i, lb=0, ub=c,
+                             vtype=gurobipy.GRB.CONTINUOUS)
+
+        model.update()
+
+        alphas = model.getVars()
+        obj = gurobipy.QuadExpr() + sum(alphas)
+        map(lambda (i, j):
+            obj.add(alphas[i] * alphas[j] * labels[i] * labels[j],
+                -0.5*(kernel.compute(patterns[i], patterns[j]) - labels[i] * labels[j] * (accuracy[i]+accuracy[j]))),
+            [(i, j) for i in xrange(m) for j in xrange(m)])
+
+
+        model.setObjective(obj, gurobipy.GRB.MAXIMIZE)
+
+        constEqual = gurobipy.LinExpr()
+        # map(lambda x: constEqual.add(x, 1.0),
+        #     [a*l for a, l in zip(alphas, labels)])
+        # model.addConstr(constEqual, gurobipy.GRB.EQUAL, 0)
+
+        constGreater = gurobipy.LinExpr(1 + tolerance)
+        for addend in [a*l for a, l in zip(alphas, labels)]:
+            constEqual.add(addend, 1.0)
+            constGreater.add(addend, 1.0)
+
+        model.addConstr(constEqual, gurobipy.GRB.EQUAL, 0)
+        model.addConstr(constGreater, gurobipy.GRB.GREATER_EQUAL, tolerance)
+
+
+        if not self.verbose:
+            model.setParam('OutputFlag', False)
+
+        model.optimize()
+
+        alphas_opt = [chop(a.x, right=c, tolerance=tolerance) for a in alphas]
+
+        return alphas_opt
 
 
 class CVXOPTVQClassificationSolver(SVMClassificationSolver):

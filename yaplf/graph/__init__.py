@@ -47,7 +47,8 @@ try:
 except ImportError:
     try:
         from matplotlib import pyplot
-        from matplotlib.axes3d import Axes3D
+        #from matplotlib.axes3d import Axes3D
+        from mpl_toolkits import mplot3d
     except ImportError:
         raise ImportError("Neither sage or matplotlib found")
 
@@ -892,7 +893,7 @@ class MatplotlibPlotter(Plotter):
             # alpha_function argument can only be used in order to set a *same*
             # transparency value for all examples, as matplotlib's scatter()
             # do not allow multiple transparency values; the selected
-            # transparency valuewill be that returned by alpha_function on the
+            # transparency value will be that returned by alpha_function on the
             # first example
             kwargs['alpha'] = alpha_function(sample[0])
 
@@ -907,7 +908,7 @@ class MatplotlibPlotter(Plotter):
         if len(sample[0].pattern) == 2:
             axes = fig.add_subplot(111)
         elif len(sample[0].pattern) == 3:
-            axes = Axes3D(fig)
+            axes = mplot3d.Axes3D(fig)
         else:
             raise ValueError('Classification data plot only available for \
                 bi- and three-dimensional data.')
@@ -1019,7 +1020,7 @@ class MatplotlibPlotter(Plotter):
             else:
                 axes.scatter(*coords, **kwargs)
         elif len(coords) == 3:
-            axes = Axes3D(fig)
+            axes = mplot3d.Axes3D(fig)
             if joined:
                 axes.plot(*coords, **kwargs)
             else:
@@ -1245,7 +1246,7 @@ class MatplotlibPlotter(Plotter):
                 #fig.colorbar(cs, shrink = 0.8, extend = 'both')
                 fig.colorbar(grad, orientation='vertical', **filtered_args)
         else:
-            axs = Axes3D(fig)
+            axs = mplot3d.Axes3D(fig)
             if contour_value:
                 for level, col in zip(contour_value, contour_color):
                     contour = transpose([(x, y, z)
